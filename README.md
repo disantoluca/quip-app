@@ -80,3 +80,4 @@ Once running, access the app at: http://localhost:8501
 ## Security
 - Tokens entered in the UI are not stored to disk by the app.
 - For production deployment, add authentication and environment secret management.
+# Build timestamp: Thu Oct 30 09:30:38 CET 2025
