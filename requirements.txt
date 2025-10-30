@@ -1,6 +1,6 @@
 streamlit
 requests
-openai
+openai>=1.0
 faiss-cpu
 numpy
 pandas

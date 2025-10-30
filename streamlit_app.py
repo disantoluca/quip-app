@@ -7,7 +7,6 @@ import random
 import base64
 import requests
 import zipfile
-import openai
 import faiss
 import pickle
 import numpy as np
@@ -18,8 +17,22 @@ import io
 from io import StringIO
 from typing import List, Dict, Tuple
 from bs4 import BeautifulSoup
-from openai import OpenAI
-client =OpenAI()
+
+# Optional GPT integration
+try:
+    import openai
+    from openai import OpenAI
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    if OPENAI_API_KEY:
+        openai.api_key = OPENAI_API_KEY
+        client = OpenAI()
+        GPT_ENABLED = True
+    else:
+        GPT_ENABLED = False
+        client = None
+except ImportError:
+    GPT_ENABLED = False
+    client = None
 # Optional PDF parsing
 try:
     from pypdf import PdfReader
@@ -1768,10 +1781,35 @@ else:
                     st.write(h["text"][:800] + ("..." if len(h["text"]) > 800 else ""))
 
             final_answer = None
-            if use_llm and openai_key:
+
+            # Assume you already have `question` and `retrieved_text`
+            question = q
+            retrieved_text = "\n\n".join([h['text'] for h in hits])
+
+            if GPT_ENABLED:
+                try:
+                    with st.spinner("Generating refined answer with GPT..."):
+                        sources_block = "\n\n".join(
+                            [f"[{i+1}] {h['meta'].get('title','Untitled')} — {h['meta'].get('link','')}\n{h['text']}"
+                             for i, h in enumerate(hits)]
+                        )
+                        completion = client.chat.completions.create(
+                            model="gpt-4o-mini",  # or whichever model you prefer
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant that answers questions based on Quip documents."},
+                                {"role": "user", "content": f"Question: {question}\n\nContext:\n{sources_block}"}
+                            ],
+                            temperature=0.2,
+                            max_tokens=300,
+                        )
+                        final_answer = completion.choices[0].message.content.strip()
+                except Exception as e:
+                    st.warning(f"⚠️ GPT request failed ({e}); using local retrieval only.")
+                    final_answer = None
+            elif use_llm and openai_key:
                 try:
                     from openai import OpenAI
-                    client = OpenAI(api_key=openai_key)
+                    client_local = OpenAI(api_key=openai_key)
                     sources_block = "\n\n".join(
                         [f"[{i+1}] {h['meta'].get('title','Untitled')} — {h['meta'].get('link','')}\n{h['text']}"
                          for i, h in enumerate(hits)]
@@ -1781,7 +1819,7 @@ else:
                         "Add citation markers like [1], [2] when you use a fact. If unsure, say you don't know.\n\n"
                         f"Question: {q}\n\nSources:\n{sources_block}\n\nAnswer (with [n] citations):"
                     )
-                    resp = client.chat.completions.create(
+                    resp = client_local.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.2,
@@ -1791,11 +1829,11 @@ else:
                     st.error(f"Answer composition failed; showing top passage instead. {e}")
 
             if not final_answer:
-                best = hits[0]
-                final_answer = best["text"][:1200] + ("..." if len(best["text"]) > 1200 else "")
-                final_answer += "\n\n_This is the top matching passage. Enable OpenAI to get a concise answer._"
+                # fallback to local answer (e.g. concatenated snippet or local summarizer)
+                final_answer = retrieved_text[:1000]  # simple fallback preview
 
-            st.success(final_answer)
+            st.markdown("### 🧭 Answer")
+            st.write(final_answer)
 
             # ✅ Sources below answer
             st.markdown("**Sources**")
