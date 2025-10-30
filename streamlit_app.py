@@ -32,7 +32,7 @@ def gpt_refine_answer(question: str, context: str) -> str | None:
             resp = client.chat.completions.create(
                 model="gpt-4o-mini",  # or gpt-4o, gpt-3.5-turbo if allowed
                 messages=[
-                    {"role": "system", "content": "Answer strictly using the provided context. If unsure, say you don't know."},
+                    {"role": "system", "content": "Answer using only the provided context when possible. If the context doesn't contain the full answer, make a best-effort inference based on related rules."},
                     {"role": "user", "content": f"Question:\n{question}\n\nContext:\n{context}"}
                 ],
                 temperature=0.2,
@@ -878,7 +878,7 @@ def _ensure_index():
     return True
 
 
-def _search(query: str, top_k: int = 5):
+def _search(query: str, top_k: int = 10):
     """Search current FAISS index and return ranked passages with metadata."""
     import numpy as np
     if "faiss_index" not in st.session_state:
@@ -1709,7 +1709,7 @@ def _ensure_index():
     return True
 
 
-def _search(query: str, top_k: int = 5):
+def _search(query: str, top_k: int = 10):
     """Search current FAISS index and return ranked passages with metadata."""
     import numpy as np
     if "faiss_index" not in st.session_state:
