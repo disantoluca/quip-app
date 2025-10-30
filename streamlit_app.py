@@ -1633,8 +1633,8 @@ with tab1:
                             key=f"preview_{i}_{meta.get('id', i)}",
                         )
 
-                    with st.expander("🔍 Metadata", expanded=False):
-                        st.json(meta)
+                    with st.popover("🔍 Metadata"):
+                        st.json(meta, expanded=False)
 
         # -------------------------
         # Download Filtered Results
