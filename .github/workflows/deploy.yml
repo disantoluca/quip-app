@@ -73,11 +73,15 @@ jobs:
         echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
+    - name: Create deployment summary file
+      run: |
+        cp $GITHUB_STEP_SUMMARY deploy-summary.md
+
     - name: Upload deployment summary artifact
       uses: actions/upload-artifact@v4
       with:
         name: deploy-summary
-        path: $GITHUB_STEP_SUMMARY
+        path: deploy-summary.md
 
   security-scan:
     runs-on: ubuntu-latest
