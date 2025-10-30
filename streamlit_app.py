@@ -17,32 +17,28 @@ import io
 from io import StringIO
 from typing import List, Dict, Tuple
 from bs4 import BeautifulSoup
+from openai import OpenAI
 
-# Optional GPT integration
-GPT_ENABLED = False
-try:
-    import openai
-    if os.getenv("OPENAI_API_KEY"):
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        GPT_ENABLED = True
-except Exception:
-    GPT_ENABLED = False
+# NEW OpenAI integration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GPT_ENABLED = bool(OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY) if GPT_ENABLED else None
 
 def gpt_refine_answer(question: str, context: str) -> str | None:
     if not GPT_ENABLED:
         return None
     try:
         with st.spinner("Refining answer with GPT…"):
-            resp = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",  # or gpt-4o, gpt-3.5-turbo if allowed
                 messages=[
-                    {"role": "system", "content": "Answer only using the provided context. If unsure, say you don't know."},
+                    {"role": "system", "content": "Answer strictly using the provided context. If unsure, say you don't know."},
                     {"role": "user", "content": f"Question:\n{question}\n\nContext:\n{context}"}
                 ],
                 temperature=0.2,
                 max_tokens=350,
             )
-            return resp.choices[0].message["content"].strip()
+            return resp.choices[0].message.content.strip()
     except Exception as e:
         st.warning(f"GPT unavailable ({e}); using local retrieval only.")
         return None

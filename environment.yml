@@ -1,0 +1,22 @@
+name: quip_app
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.11
+  - streamlit=1.37
+  - faiss-cpu=1.8
+  - sentence-transformers=3.0
+  - numpy
+  - pandas
+  - tqdm
+  - requests
+  - beautifulsoup4
+  - html5lib
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cpuonly
+  - openai
+  - pypdf2
+  - scikit-learn
