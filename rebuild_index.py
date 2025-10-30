@@ -8,24 +8,51 @@ import os
 import pickle
 import faiss
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
+
+# Try to import sentence-transformers, fall back to sklearn if not available
+try:
+    from sentence_transformers import SentenceTransformer
+    HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAS_SENTENCE_TRANSFORMERS = False
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        HAS_SKLEARN = True
+    except ImportError:
+        HAS_SKLEARN = False
 
 def load_documents():
-    """Load all documents from data/persist/"""
-    persist_dir = Path("data/persist")
-    if not persist_dir.exists():
-        print("❌ No data/persist/ directory found")
-        return []
-
+    """Load all documents from data/persist/ or existing corpus"""
     docs = []
-    for file_path in persist_dir.glob("*.pkl"):
-        try:
-            with open(file_path, 'rb') as f:
-                doc_data = pickle.load(f)
-                docs.extend(doc_data if isinstance(doc_data, list) else [doc_data])
-                print(f"✅ Loaded {file_path.name}")
-        except Exception as e:
-            print(f"⚠️ Failed to load {file_path.name}: {e}")
+
+    # Try to load from data/persist/ first
+    persist_dir = Path("data/persist")
+    if persist_dir.exists():
+        for file_path in persist_dir.glob("*.pkl"):
+            try:
+                with open(file_path, 'rb') as f:
+                    doc_data = pickle.load(f)
+                    docs.extend(doc_data if isinstance(doc_data, list) else [doc_data])
+                    print(f"✅ Loaded {file_path.name}")
+            except Exception as e:
+                print(f"⚠️ Failed to load {file_path.name}: {e}")
+
+    # Try to load from existing corpus file
+    if not docs:
+        corpus_file = Path("corpus_data.pkl")
+        if corpus_file.exists():
+            try:
+                with open(corpus_file, 'rb') as f:
+                    corpus_data = pickle.load(f)
+                    docs = corpus_data
+                    print(f"✅ Loaded {len(docs)} docs from {corpus_file}")
+            except Exception as e:
+                print(f"⚠️ Failed to load {corpus_file}: {e}")
+
+    if not docs:
+        print("❌ No data/persist/ directory found and no corpus_data.pkl")
+        print("💡 Try running the Streamlit app first to create some documents")
+        print("💡 Or manually create data/persist/ and add .pkl files there")
 
     return docs
 
@@ -36,9 +63,6 @@ def rebuild_index(docs):
         return False
 
     print(f"🔄 Processing {len(docs)} documents...")
-
-    # Initialize sentence transformer
-    model = SentenceTransformer('all-MiniLM-L6-v2')
 
     # Extract texts and metadata
     texts = []
@@ -60,18 +84,38 @@ def rebuild_index(docs):
 
     print(f"📝 Created {len(texts)} text chunks")
 
-    # Generate embeddings
-    print("🧠 Generating embeddings...")
-    embeddings = model.encode(texts, show_progress_bar=True)
+    # Generate embeddings based on available libraries
+    if HAS_SENTENCE_TRANSFORMERS:
+        print("🧠 Generating embeddings with sentence-transformers...")
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        embeddings = model.encode(texts, show_progress_bar=True)
 
-    # Create FAISS index
-    print("🔍 Building FAISS index...")
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dimension)  # Inner product for cosine similarity
+        # Create FAISS index
+        print("🔍 Building FAISS index...")
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dimension)  # Inner product for cosine similarity
 
-    # Normalize vectors for cosine similarity
-    faiss.normalize_L2(embeddings)
-    index.add(embeddings)
+        # Normalize vectors for cosine similarity
+        faiss.normalize_L2(embeddings)
+        index.add(embeddings)
+
+    elif HAS_SKLEARN:
+        print("🧠 Generating TF-IDF vectors with sklearn...")
+        vectorizer = TfidfVectorizer(max_features=384, ngram_range=(1, 2))
+        tfidf_matrix = vectorizer.fit_transform(texts)
+        embeddings = tfidf_matrix.toarray().astype('float32')
+
+        # Create FAISS index
+        print("🔍 Building FAISS index...")
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dimension)
+        index.add(embeddings)
+
+    else:
+        print("❌ No embedding library available!")
+        print("💡 Install sentence-transformers: conda install -c conda-forge sentence-transformers")
+        print("💡 Or install sklearn: conda install scikit-learn")
+        return False
 
     # Save index and metadata
     index_dir = Path("data/index")
