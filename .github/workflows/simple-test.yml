@@ -1,0 +1,13 @@
+name: Simple Build Test
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Test Docker build
+      run: docker build -t test .
