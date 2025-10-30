@@ -19,20 +19,33 @@ from typing import List, Dict, Tuple
 from bs4 import BeautifulSoup
 
 # Optional GPT integration
+GPT_ENABLED = False
 try:
     import openai
-    from openai import OpenAI
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    if OPENAI_API_KEY:
-        openai.api_key = OPENAI_API_KEY
-        client = OpenAI()
+    if os.getenv("OPENAI_API_KEY"):
+        openai.api_key = os.getenv("OPENAI_API_KEY")
         GPT_ENABLED = True
-    else:
-        GPT_ENABLED = False
-        client = None
-except ImportError:
+except Exception:
     GPT_ENABLED = False
-    client = None
+
+def gpt_refine_answer(question: str, context: str) -> str | None:
+    if not GPT_ENABLED:
+        return None
+    try:
+        with st.spinner("Refining answer with GPT…"):
+            resp = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Answer only using the provided context. If unsure, say you don't know."},
+                    {"role": "user", "content": f"Question:\n{question}\n\nContext:\n{context}"}
+                ],
+                temperature=0.2,
+                max_tokens=350,
+            )
+            return resp.choices[0].message["content"].strip()
+    except Exception as e:
+        st.warning(f"GPT unavailable ({e}); using local retrieval only.")
+        return None
 # Optional PDF parsing
 try:
     from pypdf import PdfReader
@@ -1782,31 +1795,14 @@ else:
 
             final_answer = None
 
-            # Assume you already have `question` and `retrieved_text`
+            # retrieved_text = concat of top-k passages from FAISS (already done in your code)
             question = q
             retrieved_text = "\n\n".join([h['text'] for h in hits])
 
-            if GPT_ENABLED:
-                try:
-                    with st.spinner("Generating refined answer with GPT..."):
-                        sources_block = "\n\n".join(
-                            [f"[{i+1}] {h['meta'].get('title','Untitled')} — {h['meta'].get('link','')}\n{h['text']}"
-                             for i, h in enumerate(hits)]
-                        )
-                        completion = client.chat.completions.create(
-                            model="gpt-4o-mini",  # or whichever model you prefer
-                            messages=[
-                                {"role": "system", "content": "You are a helpful assistant that answers questions based on Quip documents."},
-                                {"role": "user", "content": f"Question: {question}\n\nContext:\n{sources_block}"}
-                            ],
-                            temperature=0.2,
-                            max_tokens=300,
-                        )
-                        final_answer = completion.choices[0].message.content.strip()
-                except Exception as e:
-                    st.warning(f"⚠️ GPT request failed ({e}); using local retrieval only.")
-                    final_answer = None
-            elif use_llm and openai_key:
+            answer = gpt_refine_answer(question, retrieved_text) or retrieved_text[:1200]
+
+            # Fallback for manual API key entry (backward compatibility)
+            if not answer and use_llm and openai_key:
                 try:
                     from openai import OpenAI
                     client_local = OpenAI(api_key=openai_key)
@@ -1824,16 +1820,17 @@ else:
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.2,
                     )
-                    final_answer = resp.choices[0].message.content
+                    answer = resp.choices[0].message.content
                 except Exception as e:
                     st.error(f"Answer composition failed; showing top passage instead. {e}")
 
-            if not final_answer:
-                # fallback to local answer (e.g. concatenated snippet or local summarizer)
-                final_answer = retrieved_text[:1000]  # simple fallback preview
+            final_answer = answer or retrieved_text[:1000]
 
             st.markdown("### 🧭 Answer")
             st.write(final_answer)
+
+            # Optional: show a subtle banner so users know the mode
+            st.caption("GPT refinement: ON" if GPT_ENABLED else "GPT refinement: OFF (local retrieval only)")
 
             # ✅ Sources below answer
             st.markdown("**Sources**")
